@@ -1,12 +1,14 @@
 const config = require("../../constants/constants");
 const pool = require("../../config/pool");
 const bcrypt = require("bcrypt");
+// const convertUTCtoIST = require('../../utils/helperfunction/convertUTCtoIST')
 const {
   success,
   failure,
   unauthorized,
   validationFailed,
 } = require("../../utils/response");
+const { convertUTCtoIST } = require("../../utils/helperfunction");
 
 module.exports = {
   getUsers: async (req, res) => {
@@ -18,7 +20,11 @@ module.exports = {
       if (!result || result.length === 0) {
         return success(res, "No data found", []);
       }
-
+      // result[0].createdAt = convertUTCtoIST(result[0].createdAt);
+      result.map((item)=>{
+        item.createdAt = convertUTCtoIST(item.createdAt);
+        item.modifiedAt = convertUTCtoIST(item.modifiedAt);
+      })
       return success(res, "Users fetched successfully", result);
     } catch (err) {
       console.log("ERROR:", err);
@@ -102,4 +108,24 @@ module.exports = {
       return failure(res, "Error while logging in", err.message);
     }
   },
+
+  // Only Admin acccess.
+  changeRole: async (req, res) => {
+    const {role, email} = req.body;
+    try{
+      const result = await pool.query(
+        `UPDATE users SET role=? WHERE email=? AND isActive=1`,
+        [role, email]
+      )
+
+      if(result[0].affectedRows == 0){
+        return unauthorized(res, "User not found", {});
+      }else{
+        return success(res, "User Role updated successfully", result);
+      }
+
+    }catch(e){
+      return failure(res, e.sql, e.message);
+    }
+  }
 };
