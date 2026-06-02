@@ -29,7 +29,7 @@ app.listen(port, function (err) {
     console.log("error in starting server");
     return;
   }
-  console.log("server is running on port: ", port);
+  console.log("server is running on port : ", port);
 });
 
 app.use("/", require("./routes"));
