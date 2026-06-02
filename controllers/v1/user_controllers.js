@@ -1,56 +1,65 @@
-const pool = require("../../config/pool")
-const { success, failure, unauthorized } = require("../../utils/response");
+const config = require("../../constants/constants");
+const pool = require("../../config/pool");
+const bcrypt = require("bcrypt");
+const {
+  success,
+  failure,
+  unauthorized,
+  validationFailed,
+} = require("../../utils/response");
 
-module.exports={
-    getUsers: async (req, res) => {
-        try {
+module.exports = {
+  getUsers: async (req, res) => {
+    try {
+      const [result] = await pool.query(
+        "SELECT * FROM users WHERE isActive = 1",
+      );
 
-            const [result] = await pool.query(
-                "SELECT * FROM users WHERE isActive = 1"
-            );
+      if (!result || result.length === 0) {
+        return success(res, "No data found", []);
+      }
 
-            if (!result || result.length === 0) {
-                return success(
-                    res,
-                    "No data found",
-                    []
-                );
-            }
+      return success(res, "Users fetched successfully", result);
+    } catch (err) {
+      console.log("ERROR:", err);
 
-            return success(
-                res,
-                "Users fetched successfully",
-                result
-            );
+      return failure(res, "Error while finding users", err.message);
+    }
+  },
 
-        } catch (err) {
+  addUser: async (req, res) => {
+    const { fullName, mobile, email, password } = req.body;
+    if (!email || !password || !mobile || !fullName) {
+      return validationFailed(
+        res,
+        "FullName, Mobile, Email and Password are required",
+        {},
+      );
+    }
+    try {
+      const hashedPassword = await bcrypt.hash(password, config.SALT_ROUNDS);
+      const [result] = await pool.query(
+        `INSERT INTO users(fullName, mobileNo, email,password) VALUES (?,?,?,?)`,
+        [fullName, mobile, email, hashedPassword],
+      );
+      return success(res, "User Created Successfully", result);
+    } catch (err) {
+      console.log("LOGIN ERROR:", err);
 
-            console.log("ERROR:", err);
+      return failure(res, "Error while Sign up", err.message);
+    }
+  },
 
-            return failure(
-                res,
-                "Error while finding users",
-                err.message
-            );
-        }
-    },
+  loginUser: async (req, res) => {
+    try {
+      const { email, password } = req.body;
 
+      if (!email || !password) {
+        return validationFailed(res, "Email and Password are required", {});
+      }
 
-    loginUser: async (req, res) => {
-        try {
-
-            const { email, password } = req.body;
-
-            if (!email || !password) {
-                return validationFailed(
-                    res,
-                    "Email and Password are required",
-                    {}
-                );
-            }
-
-            const [users] = await pool.query(
-                `
+      const [users] = await pool.query(
+        `
                 SELECT
                     userId,
                     fullName,
@@ -62,47 +71,35 @@ module.exports={
                 FROM users
                 WHERE email = ? and isActive = 1
                 `,
-                [email]
-            );
+        [email],
+      );
 
-            if (users.length === 0) {
-                return unauthorized(
-                    res,
-                    "User not found",
-                    {}
-                );
-            }
+      const user = users[0];
 
-            const user = users[0];
+      if (user) {
+        const hashedPassword = user.password;
+        const status = await bcrypt.compare(password, hashedPassword);
+        if (status) {
+          const res_user = {
+            uid: user.userId,
+            email: user.email,
+          };
+          return success(res, "Login successful", {
+            userId: user.userId,
+            email: user.email,
+            role: user.role,
+          });
+        }else {
+        return unauthorized(res, "Invalid password", {});
+      }
+      }else {
+        return unauthorized(res, "Invalid email", {});
+      }
 
+    } catch (err) {
+      console.log("LOGIN ERROR:", err);
 
-            if (user.password !== password) {
-                return unauthorized(
-                    res,
-                    "Invalid password",
-                    {}
-                );
-            }
-
-            return success(
-                res,
-                "Login successful",
-                {
-                    userId: user.userId,
-                    email: user.email,
-                    role: user.role
-                }
-            );
-
-        } catch (err) {
-
-            console.log("LOGIN ERROR:", err);
-
-            return failure(
-                res,
-                "Error while logging in",
-                err.message
-            );
-        }
+      return failure(res, "Error while logging in", err.message);
     }
-}
+  },
+};
